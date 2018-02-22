@@ -22,6 +22,8 @@ import struct
 import glob
 import config_osiris as conf
 import engine_osiris as eo
+from multiprocessing import Process, Manager
+import os
 
 divider = "============================================"
 
@@ -374,31 +376,111 @@ class RamsesData(eo.OsirisData):
         if lmax==0:
            lmax = self.info["levelmax"]
         
+
+        # Multi-threading for reading outputs        
+        nthreads = 4
+        processes = []
+        manager = Manager()
+        data_pieces = manager.dict()
+        
+        for t in range(nthreads):
+            processes.append(Process(target=self.read_binary_outputs, args=(t,nthreads,nout,path,list_vars,var_read,nvar_read,var_group,gravity,\
+                lmax,xmin,xmax,ymin,ymax,zmin,zmax,particles,self.info["ndim"],self.info["ngridmax"],self.info["ncpu"],self.info["levelmax"],data_pieces)))
+    
+        for p in processes:
+            p.start()
+            
+        for p in processes:
+            p.join()
+        
+        # Merge all the data pieces into the master data array
+        master_data_array = np.concatenate(list(data_pieces.values()), axis=0)
+        if particles:
+            if npart_count != self.info["npart_tot"]:
+                print("Number of particles do not match: ",npart_count,self.info["npart_tot"])
+            else:
+                master_part_array = np.concatenate(list(part_pieces.values()), axis=0)
+        
+        self.info["ncells"] = np.shape(master_data_array)[0]
+        
+        print("Total number of cells loaded: %i" % self.info["ncells"])
+        if particles:
+            print("Total number of particles loaded: %i" % self.info["npart_tot"])
+        if self.info["nsinks"] > 0:
+            print("Read %i sink particles" % self.info["nsinks"])
+        print("Generating data structure... please wait")
+        
+        ## Store the number of cells
+        #self.info["ncells"] = ncells_tot
+        
+        # Finally we add one 'new_field' per variable we have read in =========================================
+        for i in range(len(list_vars)):
+            theKey = list_vars[i]
+            [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
+            # Replace "_" with " " to avoid error with latex when saving figures
+            theLabel = theKey.replace("_"," ")
+            # Use the 'new_field' function to create data field
+            self.new_field(name=theKey,unit=uu,label=theLabel,values=master_data_array[:,i]*norm,\
+                           verbose=False,norm=norm,update=update,group=var_group[i])
+        
+        # Now add new field for particles =====================================================================
+        if particles:
+            for i in range(len(part_vars)):
+                theKey = part_vars[i]
+                [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
+                # Replace "_" with " " to avoid error with latex when saving figures
+                theLabel = theKey.replace("_"," ")
+                # Use the 'new_field' function to create data field
+                self.new_field(name=theKey,unit=uu,label=theLabel,values=master_part_array[:,i]*norm,\
+                               verbose=False,norm=norm,update=update,group="part")
+            # Give the particles a `size'
+            [norm,uu] = self.get_units("dx",self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
+            self.new_field(name="dx_part",unit=uu,label="dx part",values=[norm*np.nanmin(self.dx.values)]*self.info["npart_tot"],\
+                               verbose=False,norm=norm,update=update,group="part")
+                
+        # Re-center the mesh around chosen center
+        self.re_center()
+
+        return 1
+    
+    #=======================================================================================
+    
+    def read_binary_outputs(self,thread_num,nthreads,nout,path,list_vars,var_read,nvar_read,var_group,gravity,lmax,\
+        xmin,xmax,ymin,ymax,zmin,zmax,particles,ndim,ngridmax,ncpu,levelmax,data_pieces):
+        
+        
+        
         # We will store the cells in a dictionary which we build as we go along.
         # The final concatenation into a single array will be done once at the end.
-        data_pieces = dict()
+        #data_pieces = dict()
         npieces = 0
         part_pieces = dict()
         npieces_part = 0
         
         # Allocate work arrays
-        twotondim = 2**self.info["ndim"]
+        twotondim = 2**ndim
         xcent = np.zeros([8,3],dtype=np.float64)
-        xg    = np.zeros([self.info["ngridmax"],3],dtype=np.float64)
-        son   = np.zeros([self.info["ngridmax"],twotondim],dtype=np.int32)
-        var   = np.zeros([self.info["ngridmax"],twotondim,nvar_read],dtype=np.float64)
-        xyz   = np.zeros([self.info["ngridmax"],twotondim,self.info["ndim"]],dtype=np.float64)
-        ref   = np.zeros([self.info["ngridmax"],twotondim],dtype=np.bool)
+        xg    = np.zeros([ngridmax,3],dtype=np.float64)
+        son   = np.zeros([ngridmax,twotondim],dtype=np.int32)
+        var   = np.zeros([ngridmax,twotondim,nvar_read],dtype=np.float64)
+        xyz   = np.zeros([ngridmax,twotondim,ndim],dtype=np.float64)
+        ref   = np.zeros([ngridmax,twotondim],dtype=np.bool)
         
         iprog = 1
         istep = 10
         ncells_tot = 0
         
+        print os.getpid()
+        print nthreads,nout,path,list_vars,var_read,nvar_read,var_group,gravity,lmax,\
+        xmin,xmax,ymin,ymax,zmin,zmax,particles,ndim,ngridmax,ncpu,levelmax
+        
         # Loop over the cpus and read the AMR and HYDRO files in binary format
-        for k in range(self.info["ncpu"]):
+        for k in range(thread_num,ncpu,nthreads):
+            
+            print k
             
             # Print progress
-            percentage = int(float(k)*100.0/float(self.info["ncpu"]))
+            percentage = int(float(k)*100.0/float(ncpu))
             if percentage >= iprog*istep:
                 print("%3i%% : read %10i cells" % (percentage,ncells_tot))
                 iprog += 1
@@ -425,7 +507,7 @@ class RamsesData(eo.OsirisData):
             ninteg = nfloat = nlines = nstrin = nquadr = nlongi = 0
             
             # Need to extract info from the file header on the first loop
-            if k == 0:
+            if k == thread_num:
             
                 # nx,ny,nz
                 ninteg = 2
@@ -438,7 +520,7 @@ class RamsesData(eo.OsirisData):
                 ninteg = 7
                 nlines = 5
                 [nboundary] = eo.get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines)
-                ngridlevel = np.zeros([self.info["ncpu"]+nboundary,self.info["levelmax"]],dtype=np.int32)
+                ngridlevel = np.zeros([ncpu+nboundary,levelmax],dtype=np.int32)
                 
                 # noutput
                 ninteg = 9
@@ -450,11 +532,11 @@ class RamsesData(eo.OsirisData):
                 ninteg = 12
                 nfloat = 2+2*noutput
                 nlines = 12
-                self.info["dtold"] = eo.get_binary_data(fmt="%id"%(self.info["levelmax"]),\
+                self.info["dtold"] = eo.get_binary_data(fmt="%id"%(levelmax),\
                                      content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
-                nfloat += 1+self.info["levelmax"]
+                nfloat += 1+levelmax
                 nlines += 1
-                self.info["dtnew"] = eo.get_binary_data(fmt="%id"%(self.info["levelmax"]),\
+                self.info["dtnew"] = eo.get_binary_data(fmt="%id"%(levelmax),\
                                      content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
                 
                 # hydro gamma
@@ -464,30 +546,30 @@ class RamsesData(eo.OsirisData):
                 [self.info["gamma"]] = eo.get_binary_data(fmt="d",content=hydroContent,ninteg=ninteg,nlines=nlines)
 
             # Read the number of grids
-            ninteg = 14+(2*self.info["ncpu"]*self.info["levelmax"])
-            nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
+            ninteg = 14+(2*ncpu*levelmax)
+            nfloat = 18+(2*noutput)+(2*levelmax)
             nlines = 21
-            ngridlevel[:self.info["ncpu"],:] = np.asarray(eo.get_binary_data(fmt="%ii"%(self.info["ncpu"]*self.info["levelmax"]),\
-                 content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(self.info["levelmax"],self.info["ncpu"]).T
+            ngridlevel[:ncpu,:] = np.asarray(eo.get_binary_data(fmt="%ii"%(ncpu*levelmax),\
+                 content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(levelmax,ncpu).T
             
             # Read boundary grids if any
             if nboundary > 0:
-                ninteg = 14+(3*self.info["ncpu"]*self.info["levelmax"])+(10*self.info["levelmax"])+(2*nboundary*self.info["levelmax"])
-                nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
+                ninteg = 14+(3*ncpu*levelmax)+(10*levelmax)+(2*nboundary*levelmax)
+                nfloat = 18+(2*noutput)+(2*levelmax)
                 nlines = 25
-                ngridlevel[self.info["ncpu"]:self.info["ncpu"]+nboundary,:] = np.asarray(eo.get_binary_data(fmt="%ii"%(nboundary*self.info["levelmax"]),\
-                                                content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(self.info["levelmax"],nboundary).T
+                ngridlevel[ncpu:ncpu+nboundary,:] = np.asarray(eo.get_binary_data(fmt="%ii"%(nboundary*levelmax),\
+                                                content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(levelmax,nboundary).T
     
             # Determine bound key precision
-            ninteg = 14+(3*self.info["ncpu"]*self.info["levelmax"])+(10*self.info["levelmax"])+(3*nboundary*self.info["levelmax"])+5
-            nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
+            ninteg = 14+(3*ncpu*levelmax)+(10*levelmax)+(3*nboundary*levelmax)+5
+            nfloat = 18+(2*noutput)+(2*levelmax)
             nlines = 21+2+3*min(1,nboundary)+1+1
             nstrin = 128
             [key_size] = eo.get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat,nstrin=nstrin,correction=-4)
             
             # Offset for AMR
-            ninteg1 = 14+(3*self.info["ncpu"]*self.info["levelmax"])+(10*self.info["levelmax"])+(3*nboundary*self.info["levelmax"])+5+3*ncoarse
-            nfloat1 = 18+(2*noutput)+(2*self.info["levelmax"])
+            ninteg1 = 14+(3*ncpu*levelmax)+(10*levelmax)+(3*nboundary*levelmax)+5+3*ncoarse
+            nfloat1 = 18+(2*noutput)+(2*levelmax)
             nlines1 = 21+2+3*min(1,nboundary)+1+1+1+3
             nstrin1 = 128 + key_size
             
@@ -538,7 +620,7 @@ class RamsesData(eo.OsirisData):
                     nstrin_grav = nstrin3
                                 
                 # Loop over domains
-                for j in range(nboundary+self.info["ncpu"]):
+                for j in range(nboundary+ncpu):
                     
                     ncache = ngridlevel[j,ilevel]
                     
@@ -557,14 +639,14 @@ class RamsesData(eo.OsirisData):
                             nfloat = nfloat_amr
                             nlines = nlines_amr + 3
                             nstrin = nstrin_amr
-                            for n in range(self.info["ndim"]):
+                            for n in range(ndim):
                                 offset = 4*ninteg + 8*(nlines+nfloat+n*(ncache+1)) + nstrin + 4
                                 xg[:ncache,n] = struct.unpack("%id"%(ncache), amrContent[offset:offset+8*ncache])
                                 
                             # son indices
-                            ninteg = ninteg_amr + ncache*(4+2*self.info["ndim"])
-                            nfloat = nfloat_amr + ncache*self.info["ndim"]
-                            nlines = nlines_amr + 4 + 3*self.info["ndim"]
+                            ninteg = ninteg_amr + ncache*(4+2*ndim)
+                            nfloat = nfloat_amr + ncache*ndim
+                            nlines = nlines_amr + 4 + 3*ndim
                             nstrin = nstrin_amr
                             for ind in range(twotondim):
                                 offset = 4*(ninteg+ind*ncache) + 8*(nlines+nfloat+ind) + nstrin + 4
@@ -579,14 +661,14 @@ class RamsesData(eo.OsirisData):
                                 # var: grav variables
                                 if gravity:
                                     #jvar = 0
-                                    for ivar in range(self.info["ndim"]+1):
+                                    for ivar in range(ndim+1):
                                         if var_read[ivar+self.info["nvar_hydro"]]:
-                                            offset = 4*ninteg_grav + 8*(nlines_grav+nfloat_grav+(ind*(self.info["ndim"]+1)+ivar)*(ncache+1)) + nstrin_grav + 4
+                                            offset = 4*ninteg_grav + 8*(nlines_grav+nfloat_grav+(ind*(ndim+1)+ivar)*(ncache+1)) + nstrin_grav + 4
                                             var[:ncache,ind,jvar] = struct.unpack("%id"%(ncache), gravContent[offset:offset+8*ncache])
                                             jvar += 1
                                 # var: coordinates and cell sizes
                                 var[:ncache,ind,-6] = float(ilevel+1)
-                                for n in range(self.info["ndim"]):
+                                for n in range(ndim):
                                     xyz[:ncache,ind,n] = xg[:ncache,n] + xcent[ind,n]-xbound[n]
                                     var[:ncache,ind,-5+n] = xyz[:ncache,ind,n]*self.info["boxlen"]
                                 var[:ncache,ind,-2] = dxcell*self.info["boxlen"]
@@ -595,17 +677,17 @@ class RamsesData(eo.OsirisData):
                                 ref[:ncache,ind] = np.logical_not(np.logical_and(son[:ncache,ind] > 0,ilevel < lmax-1))
 
                             # Select only the unrefined cells that are in the region of interest
-                            if self.info["ndim"] == 1:
+                            if ndim == 1:
                                 cube = np.where(np.logical_and(ref[:ncache,:], \
                                                 np.logical_and((xyz[:ncache,:,0]+dx2)>=xmin, \
                                                                (xyz[:ncache,:,0]-dx2)<=xmax)))
-                            elif self.info["ndim"] == 2:
+                            elif ndim == 2:
                                 cube = np.where(np.logical_and(ref[:ncache,:], \
                                                 np.logical_and((xyz[:ncache,:,0]+dx2)>=xmin, \
                                                 np.logical_and((xyz[:ncache,:,1]+dx2)>=ymin, \
                                                 np.logical_and((xyz[:ncache,:,0]-dx2)<=xmax, \
                                                                (xyz[:ncache,:,1]-dx2)<=ymax)))))
-                            elif self.info["ndim"] == 3:
+                            elif ndim == 3:
                                 cube = np.where(np.logical_and(ref[:ncache,:], \
                                                 np.logical_and((xyz[:ncache,:,0]+dx2)>=xmin, \
                                                 np.logical_and((xyz[:ncache,:,1]+dx2)>=ymin, \
@@ -623,19 +705,19 @@ class RamsesData(eo.OsirisData):
                                 ncells_tot += ncells
                                 npieces += 1
                                 # Add the cells in the master dictionary
-                                data_pieces["piece"+str(npieces)] = cells
+                                data_pieces["thread"+str(thread_num)+"piece"+str(npieces)] = cells
                                 
                         # Now increment the offsets while looping through the domains
-                        ninteg_amr += ncache*(4+3*twotondim+2*self.info["ndim"])
-                        nfloat_amr += ncache*self.info["ndim"]
-                        nlines_amr += 4 + 3*twotondim + 3*self.info["ndim"]
+                        ninteg_amr += ncache*(4+3*twotondim+2*ndim)
+                        nfloat_amr += ncache*ndim
+                        nlines_amr += 4 + 3*twotondim + 3*ndim
                         
                         nfloat_hydro += ncache*twotondim*self.info["nvar_hydro"]
                         nlines_hydro += twotondim*self.info["nvar_hydro"]
                         
                         if gravity:
-                            nfloat_grav += ncache*twotondim*(self.info["ndim"]+1)
-                            nlines_grav += twotondim*(self.info["ndim"]+1)
+                            nfloat_grav += ncache*twotondim*(ndim+1)
+                            nlines_grav += twotondim*(ndim+1)
                 
                 # Now increment the offsets while looping through the levels
                 ninteg1 = ninteg_amr
@@ -697,60 +779,24 @@ class RamsesData(eo.OsirisData):
                     part_pieces["piece"+str(npieces_part)] = part[:npart,:]
             # End of reading particles ==================================================
         
-        # Merge all the data pieces into the master data array
-        master_data_array = np.concatenate(list(data_pieces.values()), axis=0)
-        if particles:
-            if npart_count != self.info["npart_tot"]:
-                print("Number of particles do not match: ",npart_count,self.info["npart_tot"])
-            else:
-                master_part_array = np.concatenate(list(part_pieces.values()), axis=0)
+        ## Merge all the data pieces into the master data array
+        #master_data_array = np.concatenate(list(data_pieces.values()), axis=0)
+        #if particles:
+            #if npart_count != self.info["npart_tot"]:
+                #print("Number of particles do not match: ",npart_count,self.info["npart_tot"])
+            #else:
+                #master_part_array = np.concatenate(list(part_pieces.values()), axis=0)
         
         # Free memory
-        del data_pieces,xcent,xg,son,var,xyz,ref
+        del xcent,xg,son,var,xyz,ref
         if particles:
             del part_pieces,part
         
-        print("Total number of cells loaded: %i" % ncells_tot)
-        if particles:
-            print("Total number of particles loaded: %i" % self.info["npart_tot"])
-        if self.info["nsinks"] > 0:
-            print("Read %i sink particles" % self.info["nsinks"])
-        print("Generating data structure... please wait")
+        #q.put(master_data_array)
         
-        # Store the number of cells
-        self.info["ncells"] = ncells_tot
-        
-        # Finally we add one 'new_field' per variable we have read in =========================================
-        for i in range(len(list_vars)):
-            theKey = list_vars[i]
-            [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
-            # Replace "_" with " " to avoid error with latex when saving figures
-            theLabel = theKey.replace("_"," ")
-            # Use the 'new_field' function to create data field
-            self.new_field(name=theKey,unit=uu,label=theLabel,values=master_data_array[:,i]*norm,\
-                           verbose=False,norm=norm,update=update,group=var_group[i])
-        
-        # Now add new field for particles =====================================================================
-        if particles:
-            for i in range(len(part_vars)):
-                theKey = part_vars[i]
-                [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
-                # Replace "_" with " " to avoid error with latex when saving figures
-                theLabel = theKey.replace("_"," ")
-                # Use the 'new_field' function to create data field
-                self.new_field(name=theKey,unit=uu,label=theLabel,values=master_part_array[:,i]*norm,\
-                               verbose=False,norm=norm,update=update,group="part")
-            # Give the particles a `size'
-            [norm,uu] = self.get_units("dx",self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
-            self.new_field(name="dx_part",unit=uu,label="dx part",values=[norm*np.nanmin(self.dx.values)]*self.info["npart_tot"],\
-                               verbose=False,norm=norm,update=update,group="part")
-                
-        # Re-center the mesh around chosen center
-        self.re_center()
-
-        return 1
+        return #master_data_array
     
-    #=======================================================================================
+    #================================================================================
     
     # Read in sink particle `.csv` file if present.
     def read_sinks(self):
