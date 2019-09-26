@@ -12,11 +12,13 @@ def create_hash_table(holder):
     print("Building hash table")
     holder.hash_table = dict()
     for icell in range(holder.info["ncells"]):
+        print(icell)
         igrid = int(holder.get("x")[icell]/holder.get("dx")[icell])
         jgrid = int(holder.get("y")[icell]/holder.get("dx")[icell])
         kgrid = int(holder.get("z")[icell]/holder.get("dx")[icell])
         theHash = str(igrid)+','+str(jgrid)+','+str(kgrid)+','+str(int(holder.get("level")[icell]))
         holder.hash_table[theHash] = icell
+    print("Hash table complete")
 
     return
 
@@ -32,7 +34,7 @@ def interpolate(field, points):
         hashTable = holder.hash_table
     except AttributeError:
         print("A hash table is needed to perform interpolations")
-        holder.create_hash_table()
+        create_hash_table(holder)
 
     points[:, 0] = ((points[:, 0] + holder.info["xc"]) /
                     holder.info["boxsize_scaled"])
@@ -45,6 +47,7 @@ def interpolate(field, points):
     ilevl = holder.info["levelmax"]
     values = np.zeros([npoints])
     for ip in range(npoints):
+        print(ip)
         not_found = True
         loop_count = 0
         while not_found:
