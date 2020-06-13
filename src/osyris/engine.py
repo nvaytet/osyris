@@ -4,7 +4,8 @@
 
 import numpy as np
 import struct
-from . import config as conf
+# from . import config as conf
+from . import units
 
 #=======================================================================================
 # This is the class which will holds a scalar or vector field.
@@ -20,7 +21,7 @@ class OsyrisField():
         self.label = label
         self.operation = operation
         self.depth = depth
-        self.norm = norm
+        # self.norm = norm
         self.kind = kind
         self.parent = parent
         self.name = name
@@ -34,6 +35,10 @@ class OsyrisField():
         self.vector_component = vector_component
 
         return
+
+    def __repr__(self):
+        return self.name + " [{:~}] : [{} -- {}]".format(
+            self.unit.units, np.nanmin(self.values), np.nanmax(self.values))
 
     def get(self):
         return self.parent.get(self.name)
@@ -90,26 +95,38 @@ class OsyrisData:
     def print_info(self, as_string=False, full=True):
 
         # First get maximum length
-        maxlen1 = maxlen2 = maxlen3 = maxlen4 = maxlen5 = maxlen6 = 0
-        print_list = dict()
+        # maxlen1 = maxlen2 = maxlen3 = maxlen4 = maxlen5 = maxlen6 = 0
+        columns = ["Name", " Type", "  Group", " Unit", "    Min", "     Max"]
+        maxlen = {}
+        for col in columns:
+            maxlen[col] = 0
+        print_list = {}
         for key in sorted(self.get_var_list()):
             if not getattr(self,key).vector_component:
-                print_list[key] = []
-                print_list[key].append(key)
-                maxlen1 = max(maxlen1,len(key))
-                print_list[key].append(getattr(self,key).kind)
-                maxlen2 = max(maxlen2,len(print_list[key][1]))
-                print_list[key].append(getattr(self,key).group)
-                maxlen3 = max(maxlen3,len(print_list[key][2]))
-                print_list[key].append(getattr(self,key).unit)
-                maxlen4 = max(maxlen4,len(print_list[key][3]))
-                print_list[key].append(value_to_string(np.nanmin(self.get(key))))
-                print_list[key].append(value_to_string(np.nanmax(self.get(key))))
-                maxlen5 = max(maxlen5,len(print_list[key][4]))
-                maxlen6 = max(maxlen6,len(print_list[key][5]))
+                print_list[key] = {}
+                print_list[key][columns[0]] = key
+                # maxlen[columns[0]] = max(maxlen[columns[0]], len(key))
+                print_list[key][columns[1]] = getattr(self,key).kind
+                # maxlen[columns[1]] = max(maxlen[columns[1]],len(print_list[key][1]))
+                print_list[key][columns[2]] = getattr(self,key).group
+                # maxlen3 = max(maxlen3,len(print_list[key][2]))
+                print(getattr(self,key).unit)
+                print(type(getattr(self,key).unit))
+                print_list[key][columns[3]] = "[{:~}]".format(getattr(self,key).unit.units)
+                # maxlen4 = max(maxlen4,len(print_list[key][3]))
+                print_list[key][columns[4]] = value_to_string(np.nanmin(self.get(key)))
+                print_list[key][columns[5]] = value_to_string(np.nanmax(self.get(key)))
+                # maxlen5 = max(maxlen5,len(print_list[key][4]))
+                # maxlen6 = max(maxlen6,len(print_list[key][5]))
+                for col in columns:
+                    maxlen[col] = max(maxlen[col], len(print_list[key][col]))
 
         # Now print to screen
-        rule = "-" * (maxlen1+maxlen2+maxlen3+maxlen4+maxlen5+maxlen6+7)
+        # rule = "-" * (maxlen1+maxlen2+maxlen3+maxlen4+maxlen5+maxlen6+7)
+        # print(maxlen.values())
+        # print(list(maxlen.values()))
+        # print(np.sum(maxlen.values()))
+        rule = "-" * (7 + np.sum(list(maxlen.values())))
         output = ""
         if full:
             for key in sorted(self.info.keys()):
@@ -123,12 +140,16 @@ class OsyrisData:
                     output += key+": "+str(self.info[key])+"\n"
             output += "\n"
         output += "The variables are:\n"
-        output += "Name".ljust(maxlen1)+" Type".ljust(maxlen2)+"  Group".ljust(maxlen3)+\
-              " Unit".ljust(maxlen4)+"    Min".ljust(maxlen5)+"     Max".ljust(maxlen6)+"\n"
+        for col in columns:
+            output += col.ljust(maxlen[col])
+        output += "\n"
         for key in sorted(print_list.keys()):
-            output += print_list[key][0].ljust(maxlen1)+" "+print_list[key][1].ljust(maxlen2)+" "+\
-                  print_list[key][2].ljust(maxlen3)+" ["+print_list[key][3].ljust(maxlen4)+"] "+\
-                  print_list[key][4].ljust(maxlen5)+" "+print_list[key][5].ljust(maxlen6)+"\n"
+            for col in columns:
+                output += print_list[key][col].ljust(maxlen[col])+" "
+                # output += print_list[key][0].ljust(maxlen1)+" "+print_list[key][1].ljust(maxlen2)+" "+\
+                #   print_list[key][2].ljust(maxlen3)+" ["+print_list[key][3].ljust(maxlen4)+"] "+\
+                #   print_list[key][4].ljust(maxlen5)+" "+print_list[key][5].ljust(maxlen6)+"\n"
+            output += "\n"
         if as_string:
             return output
         else:
@@ -163,46 +184,49 @@ class OsyrisData:
     #=======================================================================================
     def re_center(self,newcenter=None):
 
+        # scaling = units(self.info["scale"]).magnitude
+        cm_to_scale = (1.0 * units.cm).to(self.info["scale"]).magnitude
+
         # check if newcenter is defined
         if newcenter is not None:
             lc = len(newcenter)
 
             # Find current center
-            xc = self.info["xc"] * conf.constants[self.info["scale"]]
-            yc = self.info["yc"] * conf.constants[self.info["scale"]]
-            zc = self.info["zc"] * conf.constants[self.info["scale"]]
+            xc = self.info["xc"] * scaling
+            yc = self.info["yc"] * scaling
+            zc = self.info["zc"] * scaling
 
             # Rescale the coordinates
-            self.x.values = self.x.values*conf.constants[self.info["scale"]] + xc
+            self.x.values = self.x.values*scaling + xc
             if self.info["ndim"] > 1:
-                self.y.values = self.y.values*conf.constants[self.info["scale"]] + yc
+                self.y.values = self.y.values*scaling + yc
             if self.info["ndim"] > 2:
-                self.z.values = self.z.values*conf.constants[self.info["scale"]] + zc
+                self.z.values = self.z.values*scaling + zc
 
             # Re-scale the cell sizes
-            self.dx.values = self.dx.values*conf.constants[self.info["scale"]]
+            self.dx.values = self.dx.values*scaling
 
             # Re-center sinks
             if self.info["nsinks"] > 0:
-                self.sinks["x"     ] = (self.sinks["x"]+self.info["xc"])*conf.constants[self.info["scale"]]
-                self.sinks["y"     ] = (self.sinks["y"]+self.info["yc"])*conf.constants[self.info["scale"]]
-                self.sinks["z"     ] = (self.sinks["z"]+self.info["zc"])*conf.constants[self.info["scale"]]
+                self.sinks["x"     ] = (self.sinks["x"]+self.info["xc"])*scaling
+                self.sinks["y"     ] = (self.sinks["y"]+self.info["yc"])*scaling
+                self.sinks["z"     ] = (self.sinks["z"]+self.info["zc"])*scaling
                 self.sinks["radius"] =  self.sinks["radius"]/self.info["boxsize"]
 
             # Re-center particles
             if self.info["npart_tot"] > 0:
-                self.part_position_x.values = self.part_position_x.values*conf.constants[self.info["scale"]] + xc
+                self.part_position_x.values = self.part_position_x.values*scaling + xc
                 if self.info["ndim"] > 1:
-                    self.part_position_y.values = self.part_position_y.values*conf.constants[self.info["scale"]] + yc
+                    self.part_position_y.values = self.part_position_y.values*scaling + yc
                 if self.info["ndim"] > 2:
-                    self.part_position_z.values = self.part_position_z.values*conf.constants[self.info["scale"]] + zc
+                    self.part_position_z.values = self.part_position_z.values*scaling + zc
 
             # Store new center in info
             self.info["center"] = newcenter
 
 
         if self.info["center"] is None:
-            xc = yc = zc = 0.5*self.info["boxsize"]
+            xc = yc = zc = 0.5*self.info["boxsize"]/cm_to_scale
         elif type(self.info["center"]) is str:
             cvar=self.info["center"].split(":")[1]
             if self.info["center"].startswith("sink"):
@@ -232,44 +256,44 @@ class OsyrisData:
             else:
                 raise RuntimeError("Bad center value:"+str(self.info["center"]))
         elif len(self.info["center"]) == 3:
-                xc = self.info["center"][0]*self.info["boxsize"]
-                yc = self.info["center"][1]*self.info["boxsize"]
-                zc = self.info["center"][2]*self.info["boxsize"]
+                xc = self.info["center"][0]*self.info["boxsize"]/cm_to_scale
+                yc = self.info["center"][1]*self.info["boxsize"]/cm_to_scale
+                zc = self.info["center"][2]*self.info["boxsize"]/cm_to_scale
         else:
             raise RuntimeError("Bad center value:"+str(self.info["center"]))
 
-        self.x.values = (self.x.values - xc)/conf.constants[self.info["scale"]]
+        self.x.values = (self.x.values - xc)#/scaling
         if self.info["ndim"] > 1:
-            self.y.values = (self.y.values - yc)/conf.constants[self.info["scale"]]
+            self.y.values = (self.y.values - yc)#/scaling
         if self.info["ndim"] > 2:
-            self.z.values = (self.z.values - zc)/conf.constants[self.info["scale"]]
-        self.info["xc"] = xc/conf.constants[self.info["scale"]]
-        self.info["yc"] = yc/conf.constants[self.info["scale"]]
-        self.info["zc"] = zc/conf.constants[self.info["scale"]]
+            self.z.values = (self.z.values - zc)#/scaling
+        self.info["xc"] = xc#/scaling
+        self.info["yc"] = yc#/scaling
+        self.info["zc"] = zc#/scaling
 
         # Re-scale the cell and box sizes
-        self.dx.values = self.dx.values/conf.constants[self.info["scale"]]
-        self.info["boxsize_scaled"] = self.info["boxsize"]/conf.constants[self.info["scale"]]
+        self.dx.values = self.dx.values#/scaling
+        self.info["boxsize_scaled"] = self.info["boxsize"]/cm_to_scale
 
         # Re-center sinks
         if self.info["nsinks"] > 0:
-            self.sinks["x"     ] = self.sinks["x"]/conf.constants[self.info["scale"]]-self.info["xc"]
-            self.sinks["y"     ] = self.sinks["y"]/conf.constants[self.info["scale"]]-self.info["yc"]
-            self.sinks["z"     ] = self.sinks["z"]/conf.constants[self.info["scale"]]-self.info["zc"]
-            self.sinks["radius"] = self.sinks["radius"]*self.info["boxsize"]/conf.constants[self.info["scale"]]
+            self.sinks["x"     ] = self.sinks["x"]/scaling-self.info["xc"]
+            self.sinks["y"     ] = self.sinks["y"]/scaling-self.info["yc"]
+            self.sinks["z"     ] = self.sinks["z"]/scaling-self.info["zc"]
+            self.sinks["radius"] = self.sinks["radius"]*self.info["boxsize"]/scaling
 
         # Re-center particles
         if self.info["npart_tot"] > 0:
-            self.part_position_x.values = (self.part_position_x.values - xc)/conf.constants[self.info["scale"]]
+            self.part_position_x.values = (self.part_position_x.values - xc)/scaling
             if self.info["ndim"] > 1:
-                self.part_position_y.values = (self.part_position_y.values - yc)/conf.constants[self.info["scale"]]
+                self.part_position_y.values = (self.part_position_y.values - yc)/scaling
             if self.info["ndim"] > 2:
-                self.part_position_z.values = (self.part_position_z.values - zc)/conf.constants[self.info["scale"]]
+                self.part_position_z.values = (self.part_position_z.values - zc)/scaling
 
         # Update radius
-        self.new_field(name="r",operation="np.sqrt(x**2 + y**2 + z**2)",unit=self.info["scale"],label="Radius",verbose=False)
+        self.new_field(name="r",operation="np.sqrt(x**2 + y**2 + z**2)",unit=self.x.unit,label="Radius",verbose=False)
         with np.errstate(divide="ignore"):
-            self.new_field(name="log_r",operation="np.log10(r)",unit=self.info["scale"],label="log(Radius)",verbose=False)
+            self.new_field(name="log_r",operation="np.log10(r)",unit=self.x.unit,label="log(Radius)",verbose=False)
 
         return
 

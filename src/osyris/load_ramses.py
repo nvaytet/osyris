@@ -7,6 +7,7 @@ import struct
 import glob
 from . import config as conf
 from . import engine as eng
+from . import units
 
 divider = "============================================"
 
@@ -338,7 +339,7 @@ class RamsesData(eng.OsyrisData):
         print("Processing %i files in " % (self.info["ncpu"]) + infile)
 
         # Define the size of the region to be read
-        lconvert = conf.constants[scale]/(self.info["boxlen"]*self.info["unit_l"])
+        lconvert = units(scale).magnitude/(self.info["boxlen"]*self.info["unit_l"])
         if dx > 0.0:
             xmin = xc - 0.5*dx*lconvert
             xmax = xc + 0.5*dx*lconvert
@@ -738,23 +739,23 @@ class RamsesData(eng.OsyrisData):
         # 'new_field' per variable we have read in.
         for i in range(len(list_vars)):
             theKey = list_vars[i]
-            [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
+            unit = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
             # Replace "_" with " " to avoid error with latex when saving figures
             theLabel = theKey.replace("_"," ")
             # Use the 'new_field' function to create data field
-            self.new_field(name=theKey,unit=uu,label=theLabel,values=(master_data_array[:,i])*norm,\
-                           verbose=False,norm=norm,update=update,group=var_group[i])
+            self.new_field(name=theKey,unit=1.0*unit.units,label=theLabel,values=(master_data_array[:,i])*unit.magnitude,\
+                           verbose=False,update=update,group=var_group[i])
 
         # Now add new field for particles =====================================================================
         if particles:
             for i in range(len(part_vars)):
                 theKey = part_vars[i]
-                [norm,uu] = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
+                unit = self.get_units(theKey,self.info["unit_d"],self.info["unit_l"],self.info["unit_t"],self.info["scale"])
                 # Replace "_" with " " to avoid error with latex when saving figures
                 theLabel = theKey.replace("_"," ")
                 # Use the 'new_field' function to create data field
-                self.new_field(name=theKey,unit=uu,label=theLabel,values=master_part_array[:,i]*norm,\
-                               verbose=False,norm=norm,update=update,group="part")
+                self.new_field(name=theKey,unit=1.0*unit.units,label=theLabel,values=master_part_array[:,i]*unit.magnitude,\
+                               verbose=False,update=update,group="part")
 
         # Re-center the mesh around chosen center
         self.re_center()
@@ -923,29 +924,29 @@ class RamsesData(eng.OsyrisData):
     #* `label`: (*string*) A string describing the units, to be used on axes.
     def get_units(self,string,ud,ul,ut,scale="cm"):
         if string == "density":
-            return [ud,"g/cm3"]
+            return ud * (units.g / (units.cm**3))
         elif (string.startswith("velocity")) or (string.startswith("part_velocity")):
-            return [ul/ut,"cm/s"]
+            return (ul / ut) * (units.cm / units.s)
         elif string.startswith("momentum"):
-            return [ud*ul/ut,"g/cm2/s"]
+            return (ud*ul/ut) * (units.g/(units.cm**2)/units.s)
         elif (string.startswith("B_")) or (string.startswith("part_tracer_b")):
-            return [np.sqrt(4.0*np.pi*ud*(ul/ut)**2),"G"]
+            return np.sqrt(4.0*np.pi*ud*(ul/ut)**2) * units.G
         elif (string.startswith("current_")):
-            return [np.sqrt(4.0*np.pi*ud*(ul/ut)**2)/(self.info["boxlen"]*ul),"G/cm"]
+            return np.sqrt(4.0*np.pi*ud*(ul/ut)**2)/(self.info["boxlen"]*ul) * (units.G/units.cm)
         elif ("acceleration" in string):
-            return [ul/ut**2,"cm/s2"]
+            return (ul/ut**2) * (units.cm/(units.s**2))
         elif string == ("thermal_pressure") or (string.count("energy") > 0):
-            return [ud*((ul/ut)**2),"erg/cm3"]
+            return ud*((ul/ut)**2) * (units.erg/(units.cm**3))
         elif (string == "x") or (string == "y") or (string == "z") or (string == "dx"):
-            return [ul,scale]
+            return (ul * units.cm).to(scale)
         elif string.startswith("part_position"):
-            return [ul*self.info["boxlen"],scale]
+            return (ul*self.info["boxlen"] * units.cm).to(scale)
         elif string == "temperature":
-            return [1.0,"K"]
+            return 1.0 * units.K
         elif string.startswith("photon_density"):
-            return [self.info_rt["unit_np"],"photons/cm3"]
+            return self.info_rt["unit_np"] * (units.erg/(units.cm**3))
         elif string.startswith("photon_flux"):
-            return [self.info_rt["unit_pf"],"photons/cm2/s"]
+            return self.info_rt["unit_pf"] * (units.erg/(units.cm**2)/units.s)
         else:
             for key in conf.default_units.keys():
                 if string == key:
@@ -953,5 +954,5 @@ class RamsesData(eng.OsyrisData):
                     new_string = new_string.replace("unit_l","self.info[\"unit_l\"]")
                     new_string = new_string.replace("unit_t","self.info[\"unit_t\"]")
                     uu = eval(new_string)
-                    return [uu,conf.default_units[string][1]]
-            return [1.0,""]
+                    return uu * units(conf.default_units[string][1])
+            return 1.0 * units.dimensionless

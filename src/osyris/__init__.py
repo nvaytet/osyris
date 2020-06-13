@@ -1,3 +1,7 @@
+# Import the pint physical units registry
+from pint import UnitRegistry
+units = UnitRegistry(system="cgs")
+
 # Import the config from "/home/user/.osyris/config if it exists.
 # If it doesn't, try to create one by copying the default from the source.
 # If that fails, just load the default.
@@ -18,6 +22,7 @@ except ImportError:
         import config_osyris as config
     except ImportError:
         from . import config
+config.additional_units(units)
 
 from .load_ramses import RamsesData
 from .plot_histogram import plot_histogram
