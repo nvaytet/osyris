@@ -2,9 +2,13 @@
 # Copyright (c) 2019 Osyris contributors (https://github.com/nvaytet/osyris)
 # @author Neil Vaytet
 
-import numpy as np
+# Osyris imports
 from .plot import render_map
 from .engine import OsyrisField
+from . import units
+
+# Other imports
+import numpy as np
 from scipy.stats import binned_statistic_2d
 
 
@@ -210,8 +214,8 @@ def plot_histogram(var_x,
     # Get the data values and units
     datax = holder.get(var_x.name)
     datay = holder.get(var_y.name)
-    xlabel = var_x.label+" ["+var_x.unit+"]"
-    ylabel = var_y.label+" ["+var_y.unit+"]"
+    # xlabel = var_x.label+" ["+var_x.unit+"]"
+    # ylabel = var_y.label+" ["+var_y.unit+"]"
     default_var = "histo_cell_density"
 
     # Define plotting range
@@ -295,7 +299,7 @@ def plot_histogram(var_x,
 
     empty = True
     cell_count = OsyrisField(name=default_var,
-                       unit="", label="Number of cells")
+                       unit=1.0*units.dimensionless, label="Number of cells")
 
     if image:
         if image is True:

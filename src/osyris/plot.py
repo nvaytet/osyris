@@ -201,7 +201,12 @@ def get_slice_direction(holder, direction, dx=0, dy=0, origin=[0, 0, 0]):
 
 
 def make_axis_label(field):
-    return "{} [{:~}]".format(field.label, field.unit.units)
+    lab = "{}".format(field.label)
+    unit = "{:~}".format(field.unit.units)
+    if len(unit) == 0:
+        return lab
+    else:
+        return "{} [{}]".format(lab, unit)
 
 
 def render_map(scalar=False, image=False, contour=False, scatter=False,

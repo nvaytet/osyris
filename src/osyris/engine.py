@@ -306,7 +306,7 @@ class OsyrisData:
     # mydata.new_field(name="log_rho",operation="np.log10(density)",unit="g/cm3",label="log(Density)")
     # The operation string is then evaluated using the 'eval' function.
     #=======================================================================================
-    def new_field(self,name,operation="",unit="",label="",verbose=True,values=None,norm=1.0,kind="scalar",\
+    def new_field(self,name,operation="",unit=1.0*units.dimensionless,label="",verbose=True,values=None,norm=1.0,kind="scalar",\
                   vec_x=False,vec_y=False,vec_z=False,update=False,group=""):
 
         # Case where values are given and no operation is to be computed
