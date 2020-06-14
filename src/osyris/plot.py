@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import matplotlib.collections
 from matplotlib.colors import LogNorm, Normalize
 from . import config as conf
+from .engine import value_to_string
+from . import units
 
 
 def perpendicular_vector(v):
@@ -198,6 +200,10 @@ def get_slice_direction(holder, direction, dx=0, dy=0, origin=[0, 0, 0]):
     return dx, dy, box, dir_vecs, origin
 
 
+def make_axis_label(field):
+    return "{} [{:~}]".format(field.label, field.unit.units)
+
+
 def render_map(scalar=False, image=False, contour=False, scatter=False,
                vec=False, stream=False, outline=False, x=0, y=0,
                z_scal=0, z_imag=0, z_cont=0, z_outl=0, u_vect=0, v_vect=0, w_vect=0, u_strm=0, v_strm=0,
@@ -242,8 +248,9 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         if scalar_args_osyris["cbar"]:
             scb = plt.colorbar(
                 contf, ax=theAxes, cax=scalar_args_osyris["cbax"], format=scalar_args_osyris["cb_format"])
-            scb.ax.set_ylabel(
-                scalar.label+(" ["+scalar.unit+"]" if len(scalar.unit) > 0 else ""))
+            scb.ax.set_ylabel(make_axis_label(scalar))
+                # "{} [{:~}]".format(getattr(self,key).unit.units)
+                # scalar.label+(" ["+scalar.unit+"]" if len(scalar.unit) > 0 else ""))
             scb.ax.yaxis.set_label_coords(-1.1, 0.5)
 
     # Plot image
@@ -264,8 +271,8 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         if image_args_osyris["cbar"]:
             icb = plt.colorbar(
                 img, ax=theAxes, cax=image_args_osyris["cbax"], format=image_args_osyris["cb_format"])
-            icb.ax.set_ylabel(
-                image.label+(" ["+image.unit+"]" if len(image.unit) > 0 else ""))
+            icb.ax.set_ylabel(make_axis_label(image))
+                # image.label+(" ["+image.unit+"]" if len(image.unit) > 0 else ""))
             icb.ax.yaxis.set_label_coords(-1.1, 0.5)
 
     # Plot contours
@@ -287,8 +294,8 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         if contour_args_osyris["cbar"]:
             ccb = plt.colorbar(
                 cont, ax=theAxes, cax=contour_args_osyris["cbax"], format=contour_args_osyris["cb_format"])
-            ccb.ax.set_ylabel(
-                contour.label+(" ["+contour.unit+"]" if len(contour.unit) > 0 else ""))
+            ccb.ax.set_ylabel(make_axis_label(contour))
+                # contour.label+(" ["+contour.unit+"]" if len(contour.unit) > 0 else ""))
             ccb.ax.yaxis.set_label_coords(-1.1, 0.5)
 
     # Plot scatter points
@@ -317,8 +324,8 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         if scatter_args_osyris["cbar"]:
             rcb = plt.colorbar(
                 scat, ax=theAxes, cax=scatter_args_osyris["cbax"], format=scatter_args_osyris["cb_format"])
-            rcb.ax.set_ylabel(
-                scatter.label+(" ["+scatter.unit+"]" if len(scatter.unit) > 0 else ""))
+            rcb.ax.set_ylabel(make_axis_label(scatter))
+                # scatter.label+(" ["+scatter.unit+"]" if len(scatter.unit) > 0 else ""))
             rcb.ax.yaxis.set_label_coords(-1.1, 0.5)
 
     # Draw outline
@@ -350,27 +357,33 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
             if vec_args_osyris["cbar"]:
                 vcb = plt.colorbar(
                     vect, ax=theAxes, cax=vec_args_osyris["cbax"], orientation="horizontal", format=vec_args_osyris["cb_format"])
-                vcb.ax.set_xlabel(vec_args_osyris["colors"].label+(
-                    " ["+vec_args_osyris["colors"].unit+"]" if len(vec_args_osyris["colors"].unit) > 0 else ""))
+                vcb.ax.set_xlabel(make_axis_label(vec_args_osyris["colors"]))
+                    # vec_args_osyris["colors"].label+(
+                    # " ["+vec_args_osyris["colors"].unit+"]" if len(vec_args_osyris["colors"].unit) > 0 else ""))
         elif vec_args_plot["cmap"]:
             vect = theAxes.quiver(x[::vskip], y[::vskip], u_vect[::vskip, ::vskip], v_vect[::vskip, ::vskip],
                                   w_vect[::vskip, ::vskip], **vec_args_plot)
             if vec_args_osyris["cbar"]:
                 vcb = plt.colorbar(
                     vect, ax=theAxes, cax=vec_args_osyris["cbax"], orientation="horizontal", format=vec_args_osyris["cb_format"])
-                vcb.ax.set_xlabel(
-                    vec.label+(" ["+vec.unit+"]" if len(vec.unit) > 0 else ""))
+                vcb.ax.set_xlabel(make_axis_label(vec))
+                    # vec.label+(" ["+vec.unit+"]" if len(vec.unit) > 0 else ""))
         else:
             vect = theAxes.quiver(x[::vskip], y[::vskip], u_vect[::vskip, ::vskip], v_vect[::vskip, ::vskip],
                                   **vec_args_plot)
 
         # Plot the scale of the vectors under the axes
-        unit_u = vec.unit
+        # unit_u = vec.unit
         if vec_args_osyris["vkey"]:
-            theAxes.quiverkey(vect, vec_args_osyris["vkey_pos"][0], vec_args_osyris["vkey_pos"][1],
-                              vec_args_osyris["vscale"], "%.2f [%s]" % (vec_args_osyris["vscale"],
-                                                                        unit_u), labelpos="E", labelcolor="k", coordinates="axes", color="k",
-                              zorder=100)
+            theAxes.quiverkey(
+                vect,
+                vec_args_osyris["vkey_pos"][0],
+                vec_args_osyris["vkey_pos"][1],
+                vec_args_osyris["vscale"],
+                "{} [{:~}]".format(value_to_string(vec_args_osyris["vscale"]),
+                                   vec.unit.units),
+                labelpos="E", labelcolor="k", coordinates="axes", color="k",
+                zorder=100)
 
     # Plot streamlines
     if stream:
@@ -388,8 +401,8 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         if stream_args_osyris["cbar"]:
             scb = plt.colorbar(
                 strm.lines, ax=theAxes, cax=stream_args_osyris["cbax"], orientation="horizontal", format=stream_args_osyris["cb_format"])
-            scb.ax.set_xlabel(
-                stream.label+(" ["+stream.unit+"]" if len(stream.unit) > 0 else ""))
+            scb.ax.set_xlabel(make_axis_label(stream))
+                # stream.label+(" ["+stream.unit+"]" if len(stream.unit) > 0 else ""))
 
     # Plot sink particles
     if holder.info["nsinks"] > 0 and sinks:
@@ -448,7 +461,7 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
         theAxes.set_title(title)
     except TypeError:
         theAxes.set_title("Time = %.3f %s" % (
-            holder.info["time"]/conf.constants[conf.default_values["time_unit"]], conf.default_values["time_unit"]))
+            holder.info["time"]/units(conf.default_values["time_unit"]).to(units.s).magnitude, conf.default_values["time_unit"]))
 
     if axes:
         pass
@@ -466,14 +479,14 @@ def render_map(scalar=False, image=False, contour=False, scatter=False,
                               max(theAxes.get_ylim()[1], ymax)])
 
     # Define axes labels
-    xlab = getattr(holder, dir_vecs[1][0]).label
-    if len(getattr(holder, dir_vecs[1][0]).unit) > 0:
-        xlab += " ["+getattr(holder, dir_vecs[1][0]).unit+"]"
-    ylab = getattr(holder, dir_vecs[2][0]).label
-    if len(getattr(holder, dir_vecs[2][0]).unit) > 0:
-        ylab += " ["+getattr(holder, dir_vecs[2][0]).unit+"]"
-    theAxes.set_xlabel(xlab)
-    theAxes.set_ylabel(ylab)
+    # xlab = getattr(holder, dir_vecs[1][0]).label
+    # if len(getattr(holder, dir_vecs[1][0]).unit) > 0:
+    #     xlab += " ["+getattr(holder, dir_vecs[1][0]).unit+"]"
+    # ylab = getattr(holder, dir_vecs[2][0]).label
+    # if len(getattr(holder, dir_vecs[2][0]).unit) > 0:
+    #     ylab += " ["+getattr(holder, dir_vecs[2][0]).unit+"]"
+    theAxes.set_xlabel(make_axis_label(getattr(holder, dir_vecs[1][0])))
+    theAxes.set_ylabel(make_axis_label(getattr(holder, dir_vecs[2][0])))
 
     if equal_axes:
         theAxes.set_aspect("equal")

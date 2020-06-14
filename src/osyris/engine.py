@@ -37,8 +37,9 @@ class OsyrisField():
         return
 
     def __repr__(self):
-        return self.name + " [{:~}] : [{} -- {}]".format(
-            self.unit.units, np.nanmin(self.values), np.nanmax(self.values))
+        return self.name + " [{:~}] : ({} -> {})".format(
+            self.unit.units, value_to_string(np.nanmin(self.values)),
+            value_to_string(np.nanmax(self.values)))
 
     def get(self):
         return self.parent.get(self.name)
@@ -96,7 +97,7 @@ class OsyrisData:
 
         # First get maximum length
         # maxlen1 = maxlen2 = maxlen3 = maxlen4 = maxlen5 = maxlen6 = 0
-        columns = ["Name", " Type", "  Group", " Unit", "    Min", "     Max"]
+        columns = ["Name", " Type", "  Group", " Unit", "  Min", "     Max"]
         maxlen = {}
         for col in columns:
             maxlen[col] = 0
@@ -226,7 +227,8 @@ class OsyrisData:
 
 
         if self.info["center"] is None:
-            xc = yc = zc = 0.5*self.info["boxsize"]/cm_to_scale
+            xc = yc = zc = 0.5*self.info["boxsize"] * cm_to_scale
+            print(xc, self.info["boxsize"], cm_to_scale)
         elif type(self.info["center"]) is str:
             cvar=self.info["center"].split(":")[1]
             if self.info["center"].startswith("sink"):
@@ -256,9 +258,9 @@ class OsyrisData:
             else:
                 raise RuntimeError("Bad center value:"+str(self.info["center"]))
         elif len(self.info["center"]) == 3:
-                xc = self.info["center"][0]*self.info["boxsize"]/cm_to_scale
-                yc = self.info["center"][1]*self.info["boxsize"]/cm_to_scale
-                zc = self.info["center"][2]*self.info["boxsize"]/cm_to_scale
+                xc = self.info["center"][0]*self.info["boxsize"] * cm_to_scale
+                yc = self.info["center"][1]*self.info["boxsize"] * cm_to_scale
+                zc = self.info["center"][2]*self.info["boxsize"] * cm_to_scale
         else:
             raise RuntimeError("Bad center value:"+str(self.info["center"]))
 
@@ -267,13 +269,14 @@ class OsyrisData:
             self.y.values = (self.y.values - yc)#/scaling
         if self.info["ndim"] > 2:
             self.z.values = (self.z.values - zc)#/scaling
+        print("nn", np.nanmin(self.x.values), np.nanmax(self.x.values))
         self.info["xc"] = xc#/scaling
         self.info["yc"] = yc#/scaling
         self.info["zc"] = zc#/scaling
 
         # Re-scale the cell and box sizes
         self.dx.values = self.dx.values#/scaling
-        self.info["boxsize_scaled"] = self.info["boxsize"]/cm_to_scale
+        self.info["boxsize_scaled"] = self.info["boxsize"] * cm_to_scale
 
         # Re-center sinks
         if self.info["nsinks"] > 0:

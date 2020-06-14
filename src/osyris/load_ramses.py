@@ -743,6 +743,8 @@ class RamsesData(eng.OsyrisData):
             # Replace "_" with " " to avoid error with latex when saving figures
             theLabel = theKey.replace("_"," ")
             # Use the 'new_field' function to create data field
+            print(unit.units)
+            print(unit.magnitude)
             self.new_field(name=theKey,unit=1.0*unit.units,label=theLabel,values=(master_data_array[:,i])*unit.magnitude,\
                            verbose=False,update=update,group=var_group[i])
 
@@ -938,9 +940,9 @@ class RamsesData(eng.OsyrisData):
         elif string == ("thermal_pressure") or (string.count("energy") > 0):
             return ud*((ul/ut)**2) * (units.erg/(units.cm**3))
         elif (string == "x") or (string == "y") or (string == "z") or (string == "dx"):
-            return (ul * units.cm).to(scale)
+            return (ul * units.cm / units(scale).to(units.cm)).magnitude * units(scale)
         elif string.startswith("part_position"):
-            return (ul*self.info["boxlen"] * units.cm).to(scale)
+            return (ul*self.info["boxlen"] * units.cm / units(scale).to(units.cm)).magnitude * units(scale)
         elif string == "temperature":
             return 1.0 * units.K
         elif string.startswith("photon_density"):
