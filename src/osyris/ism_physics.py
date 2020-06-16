@@ -2,7 +2,7 @@
 # Copyright (c) 2019 Osyris contributors (https://github.com/nvaytet/osyris)
 # @author Neil Vaytet
 
-from .engine import get_binary_data
+from .tools import get_binary_data
 from . import config as conf
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator

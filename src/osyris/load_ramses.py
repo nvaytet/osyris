@@ -8,6 +8,8 @@ import glob
 from . import config as conf
 from . import engine as eng
 from . import units
+from .tools import get_binary_data
+
 
 divider = "============================================"
 
@@ -422,44 +424,44 @@ class RamsesData(eng.OsyrisData):
                 # nx,ny,nz
                 ninteg = 2
                 nlines = 2
-                [nx,ny,nz] = eng.get_binary_data(fmt="3i",content=amrContent,ninteg=ninteg,nlines=nlines)
+                [nx,ny,nz] = get_binary_data(fmt="3i",content=amrContent,ninteg=ninteg,nlines=nlines)
                 ncoarse = nx*ny*nz
                 xbound = [float(int(nx/2)),float(int(ny/2)),float(int(nz/2))]
 
                 # nboundary
                 ninteg = 7
                 nlines = 5
-                [nboundary] = eng.get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines)
+                [nboundary] = get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines)
                 ngridlevel = np.zeros([self.info["ncpu"]+nboundary,self.info["levelmax"]],dtype=np.int32)
 
                 # noutput
                 ninteg = 9
                 nfloat = 1
                 nlines = 8
-                [noutput] = eng.get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
+                [noutput] = get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
 
                 # dtold, dtnew
                 ninteg = 12
                 nfloat = 2+2*noutput
                 nlines = 12
-                self.info["dtold"] = eng.get_binary_data(fmt="%id"%(self.info["levelmax"]),\
+                self.info["dtold"] = get_binary_data(fmt="%id"%(self.info["levelmax"]),\
                                      content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
                 nfloat += 1+self.info["levelmax"]
                 nlines += 1
-                self.info["dtnew"] = eng.get_binary_data(fmt="%id"%(self.info["levelmax"]),\
+                self.info["dtnew"] = get_binary_data(fmt="%id"%(self.info["levelmax"]),\
                                      content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)
 
                 # hydro gamma
                 ninteg = 5
                 nfloat = 0
                 nlines = 5
-                [self.info["gamma"]] = eng.get_binary_data(fmt="d",content=hydroContent,ninteg=ninteg,nlines=nlines)
+                [self.info["gamma"]] = get_binary_data(fmt="d",content=hydroContent,ninteg=ninteg,nlines=nlines)
 
             # Read the number of grids
             ninteg = 14+(2*self.info["ncpu"]*self.info["levelmax"])
             nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
             nlines = 21
-            ngridlevel[:self.info["ncpu"],:] = np.asarray(eng.get_binary_data(fmt="%ii"%(self.info["ncpu"]*self.info["levelmax"]),\
+            ngridlevel[:self.info["ncpu"],:] = np.asarray(get_binary_data(fmt="%ii"%(self.info["ncpu"]*self.info["levelmax"]),\
                  content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(self.info["levelmax"],self.info["ncpu"]).T
 
             # Read boundary grids if any
@@ -467,7 +469,7 @@ class RamsesData(eng.OsyrisData):
                 ninteg = 14+(3*self.info["ncpu"]*self.info["levelmax"])+(10*self.info["levelmax"])+(2*nboundary*self.info["levelmax"])
                 nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
                 nlines = 25
-                ngridlevel[self.info["ncpu"]:self.info["ncpu"]+nboundary,:] = np.asarray(eng.get_binary_data(fmt="%ii"%(nboundary*self.info["levelmax"]),\
+                ngridlevel[self.info["ncpu"]:self.info["ncpu"]+nboundary,:] = np.asarray(get_binary_data(fmt="%ii"%(nboundary*self.info["levelmax"]),\
                                                 content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat)).reshape(self.info["levelmax"],nboundary).T
 
             # Determine bound key precision
@@ -475,7 +477,7 @@ class RamsesData(eng.OsyrisData):
             nfloat = 18+(2*noutput)+(2*self.info["levelmax"])
             nlines = 21+2+3*min(1,nboundary)+1+1
             nstrin = 128
-            [key_size] = eng.get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat,nstrin=nstrin,correction=-4)
+            [key_size] = get_binary_data(fmt="i",content=amrContent,ninteg=ninteg,nlines=nlines,nfloat=nfloat,nstrin=nstrin,correction=-4)
 
             # Offset for AMR
             ninteg1 = 14+(3*self.info["ncpu"]*self.info["levelmax"])+(10*self.info["levelmax"])+(3*nboundary*self.info["levelmax"])+5+3*ncoarse
@@ -694,19 +696,19 @@ class RamsesData(eng.OsyrisData):
                     partContent = part_file.read()
                 # Get number of particles for this cpu
                 offset = (fmt_to_bytes["i"] + fmt_to_bytes["e"]) * 2
-                [npart] = eng.get_binary_data(fmt="i",content=partContent,offset=offset)
+                [npart] = get_binary_data(fmt="i",content=partContent,offset=offset)
                 if npart > 0:
                     npart_count += npart
                     part = np.zeros([npart, len(part_vars)],dtype=np.float64)
                     # Determine size of localseed array
                     offset = (fmt_to_bytes["i"] + fmt_to_bytes["e"]) * 3
-                    [recordlength] = eng.get_binary_data(fmt="i",content=partContent,offset=offset,correction=-4)
+                    [recordlength] = get_binary_data(fmt="i",content=partContent,offset=offset,correction=-4)
                     localseedsize = recordlength//4
                     # Now set offsets
                     offset = fmt_to_bytes["i"]*(5+localseedsize) + fmt_to_bytes["e"]*8 + fmt_to_bytes["d"]*2
                     # Go through all the particle fields and unpack the data
                     for n in range(len(part_vars)):
-                        part[:, n] = eng.get_binary_data(fmt=("%i"%npart)+part_type[n],content=partContent,offset=offset)
+                        part[:, n] = get_binary_data(fmt=("%i"%npart)+part_type[n],content=partContent,offset=offset)
                         offset += fmt_to_bytes["e"] + npart*fmt_to_bytes[part_type[n]]
 
                     # Add the cells in the master dictionary
